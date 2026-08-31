@@ -201,9 +201,10 @@ Chrome 151.0.7922.71、desktop 1440×900で実行。
 
 - 修正前HEAD: `76d1da6ebc7568c2693d6cf48f20b5a0a3a579aa`
 - commit前作業ツリー: 334 status entries（140 D / 91 M / 103 untracked）
-- 最終commit: `__FINAL_COMMIT_SHA__`
-- 最終git status: `__FINAL_GIT_STATUS__`
-- commit数: 1件（amend後の最終履歴として1件）
+- 実装・QA基準commit: `1c777b633510be21859a4f265db51c3a0ea684ca`
+- 本報告書を含む公開対象commitは、この報告書の自己参照を避けるためSHAを本文へ埋め込まず、GitHub push後のremote main読戻し結果を正とする。
+- 本報告書commit直前の未commit差分: `QA_REPORT.md` 1件のみ
+- ローカルcommit数: 2件（実装・QA成果物1件、最終報告書1件）
 - push / 外部公開 / Pages有効化 / GitHub書き込み: **未実施**
 
 ## 11. 最終判定
