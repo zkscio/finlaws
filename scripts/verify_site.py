@@ -101,6 +101,9 @@ class _VisibleTextCollector(HTMLParser):
 _UNRENDERED_MARKDOWN_PATTERNS = (
     re.compile(r"\[[^\]\n]+\]\([^\)\n]+\.md(?:#[^\)\n]+)?\)"),
     re.compile(r"(?:^|\n)[ \t]*#{1,6}[ \t]+\S", re.MULTILINE),
+    re.compile(r"(?:^|\n)[ \t]*_?[\u30a1-\u30fa]{1,4}_\S"),
+    re.compile(r"(?:^|\n)[ \t]*_?（[^）\n]{1,40}）_\S"),
+    re.compile(r"(?:^|\n)[ \t]*\|[^\n]*\|[ \t]*\n[ \t]*\|[ \t]*:?-{3,}"),
 )
 
 
@@ -119,6 +122,8 @@ def find_unrendered_markdown(site_root: Path) -> list[str]:
 _FORBIDDEN_MARKERS = (
     "_private/",
     "/opt/data/",
+    "/home/",
+    "file:///",
     "github_pat_",
     "ghp_",
     "xoxb-",
@@ -152,7 +157,13 @@ def scan_forbidden_content(site_root: Path) -> list[tuple[str, str]]:
     return findings
 
 
-def verify_built_site(site_root: Path, base_path: str) -> dict[str, object]:
+def verify_built_site(
+    site_root: Path,
+    base_path: str,
+    *,
+    expected_law_routes: int | None = None,
+    expected_partitions: int | None = None,
+) -> dict[str, object]:
     """Run fail-closed structural, link, base-path, and publication-safety checks."""
     site_root = site_root.resolve()
     html_paths = sorted(site_root.rglob("*.html")) if site_root.is_dir() else []
@@ -201,6 +212,9 @@ def verify_built_site(site_root: Path, base_path: str) -> dict[str, object]:
         if path.is_file() and path.stat().st_size > 25 * 1024 * 1024
     ] if site_root.is_dir() else []
     site_bytes = sum(path.stat().st_size for path in site_root.rglob("*") if path.is_file()) if site_root.is_dir() else 0
+    law_routes = sum(
+        1 for path in (site_root / "law").glob("*/index.html") if path.is_file()
+    ) if (site_root / "law").is_dir() else 0
 
     errors: list[str] = []
     if not site_root.is_dir():
@@ -227,12 +241,17 @@ def verify_built_site(site_root: Path, base_path: str) -> dict[str, object]:
         errors.append("oversized files in site artifact")
     if site_bytes > 900 * 1024 * 1024:
         errors.append("site artifact exceeds 900 MiB safety limit")
+    if expected_law_routes is not None and law_routes != expected_law_routes:
+        errors.append("law route count mismatch")
+    if expected_partitions is not None and pagefind_partitions != expected_partitions:
+        errors.append("Pagefind partition count mismatch")
 
     report: dict[str, object] = {
         "status": "pass" if not errors else "fail",
         "site": str(site_root),
         "base_path": normalized_base_path,
         "html_files": len(html_paths),
+        "law_routes": law_routes,
         "pagefind_partitions": pagefind_partitions,
         "pagefind_files": sum(1 for path in pagefind_dir.rglob("*") if path.is_file()) if pagefind_dir.is_dir() else 0,
         "site_bytes": site_bytes,
@@ -253,8 +272,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Verify a built Finlaws static site")
     parser.add_argument("--site", type=Path, required=True)
     parser.add_argument("--base-path", default="/finlaws/")
+    parser.add_argument("--expected-law-routes", type=int)
+    parser.add_argument("--expected-partitions", type=int)
     arguments = parser.parse_args()
-    report = verify_built_site(arguments.site, arguments.base_path)
+    report = verify_built_site(
+        arguments.site,
+        arguments.base_path,
+        expected_law_routes=arguments.expected_law_routes,
+        expected_partitions=arguments.expected_partitions,
+    )
     print(json.dumps(report, ensure_ascii=False, sort_keys=True))
     return 0 if report["status"] == "pass" else 1
 

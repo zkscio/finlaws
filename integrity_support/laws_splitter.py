@@ -10,7 +10,7 @@ laws_splitter.py — e-Gov法令原文を「章ごと」に分割し、各法令
 """
 import os, re, sys, glob, datetime
 
-LAWS = '/opt/data/laws'
+LAWS = os.environ.get('FINLAWS_SOURCE', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ENC = 'utf-8-sig'
 SRC_URL = 'https://laws.e-gov.go.jp/'
 
@@ -302,8 +302,8 @@ def main():
         print('')
         print('新法令を追加するには:')
         print('  1) e-Gov (https://laws.e-gov.go.jp/) から条文全文を取得し')
-        print('     /opt/data/laws/10_法令名.md として保存 (BOM付きUTF-8)')
-        print('  2) python3 /opt/data/scripts/laws_splitter.py 10_法令名.md')
+        print('     repository rootへ10_法令名.mdとして保存 (BOM付きUTF-8)')
+        print('  2) python3 integrity_support/laws_splitter.py 10_法令名.md')
         print('  3) 章/節/附則に自動分割され、laws/INDEX.md が更新される')
 
 if __name__ == '__main__':

@@ -16,6 +16,7 @@ build_site_source = getattr(build_pages_source, "build_site_source", None)
 rewrite_internal_links = getattr(build_pages_source, "rewrite_internal_links", None)
 rewrite_egov_law_links = getattr(build_pages_source, "rewrite_egov_law_links", None)
 search_page_markdown = getattr(build_pages_source, "search_page_markdown", None)
+normalize_legal_markdown = getattr(build_pages_source, "normalize_legal_markdown", None)
 
 
 class PublicSourceSelectionTests(unittest.TestCase):
@@ -113,6 +114,34 @@ class SourceMarkdownBoundaryTests(unittest.TestCase):
                 builder(root, output)
 
 
+    def test_rejects_law_directory_symlink_into_private_source_content(self) -> None:
+        builder = build_site_source
+        self.assertIsNotNone(builder, "site source builder is not implemented")
+        assert builder is not None
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "source"
+            output = Path(tmp) / "docs"
+            root.mkdir()
+            root.joinpath("INDEX.md").write_text(
+                "| # | 法令名 | 種別 | e-Gov law_id | フォルダ |\n"
+                "|---|---|---|---|---|\n"
+                "| 01 | 境界試験法 | 法律 | 999AA0000000000 | `法律/01_境界試験法/` |\n",
+                encoding="utf-8-sig",
+            )
+            private = root / "_private" / "secret-law"
+            private.mkdir(parents=True)
+            private.joinpath("00_全文.md").write_text(
+                "# 境界試験法\n\n> e-Gov 法令検索から公式APIで取得（Law ID: 999AA0000000000）\n",
+                encoding="utf-8-sig",
+            )
+            category = root / "法律"
+            category.mkdir()
+            category.joinpath("01_境界試験法").symlink_to(private, target_is_directory=True)
+
+            with self.assertRaisesRegex(ValueError, "symlink|private|category"):
+                builder(root, output)
+
+
 class LawIndexParsingTests(unittest.TestCase):
     def test_parses_bom_japanese_index_rows_into_law_records(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -172,6 +201,46 @@ class LawIndexParsingTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, "unsafe source path"):
                 parser(index)
+
+    def test_rejects_private_hidden_or_wrong_category_source_paths(self) -> None:
+        parser = parse_law_index
+        self.assertIsNotNone(parser, "law index parser is not implemented")
+        assert parser is not None
+        with tempfile.TemporaryDirectory() as tmp:
+            index = Path(tmp) / "INDEX.md"
+            for source in ("_private/secret-law/", ".hidden/secret-law/", "政令/01_別カテゴリ/"):
+                index.write_text(
+                    f"| 01 | 非公開法 | 法律 | 999AA0000000000 | `{source}` |\n",
+                    encoding="utf-8-sig",
+                )
+                with self.assertRaisesRegex(ValueError, "unsafe source path|category"):
+                    parser(index)
+
+
+class LegalMarkdownNormalizationTests(unittest.TestCase):
+    def test_removes_intraword_emphasis_markers_from_legal_subitems(self) -> None:
+        normalizer = normalize_legal_markdown
+        self.assertIsNotNone(normalizer, "legal Markdown normalizer is not implemented")
+        assert normalizer is not None
+
+        source = "_イ_電子決済等代行業\n_（１）_登録申請者\n_（定義）_\n"
+
+        self.assertEqual(
+            normalizer(source),
+            "イ電子決済等代行業\n（１）登録申請者\n_（定義）_\n",
+        )
+
+    def test_inserts_blank_line_before_legal_markdown_tables(self) -> None:
+        normalizer = normalize_legal_markdown
+        self.assertIsNotNone(normalizer, "legal Markdown normalizer is not implemented")
+        assert normalizer is not None
+
+        source = "読み替える。\n| 条項 | 読替前 | 読替後 |\n| --- | --- | --- |\n| 第二条 | 銀行業務 | 資金移動業 |\n"
+
+        self.assertEqual(
+            normalizer(source),
+            "読み替える。\n\n| 条項 | 読替前 | 読替後 |\n| --- | --- | --- |\n| 第二条 | 銀行業務 | 資金移動業 |\n",
+        )
 
 
 class NavigationGenerationTests(unittest.TestCase):
@@ -373,6 +442,9 @@ class PagesConfigurationTests(unittest.TestCase):
         self.assertIn("python -m unittest discover", workflow)
         self.assertIn("pagefind", workflow)
         self.assertIn("python scripts/build_search_indexes.py", workflow)
+        self.assertIn("python scripts/machine_inspect_site.py", workflow)
+        self.assertIn("--expected-law-routes 469", workflow)
+        self.assertIn("--expected-partitions 7", workflow)
         self.assertNotIn("npx pagefind --site site", workflow)
 
     def test_pages_workflow_hashes_the_committed_python_lockfile_for_pip_cache(self) -> None:
@@ -401,6 +473,40 @@ class PagesConfigurationTests(unittest.TestCase):
             '.md-header__topic[data-md-component="header-topic"] {\n  max-width: calc(100% - 1.25rem);',
             css,
         )
+
+
+class RepositoryCorpusContractTests(unittest.TestCase):
+    def test_repository_contains_exactly_469_unique_official_laws(self) -> None:
+        parser = parse_law_index
+        self.assertIsNotNone(parser, "law index parser is not implemented")
+        assert parser is not None
+        project = Path(__file__).parents[1]
+        records = parser(project / "INDEX.md")
+
+        self.assertEqual(len(records), 469)
+        self.assertEqual(len({record.law_id for record in records}), 469)
+        self.assertEqual(len({record.source_dir.as_posix() for record in records}), 469)
+        for record in records:
+            fulltext_path = project / record.source_dir / "00_全文.md"
+            data = fulltext_path.read_bytes()
+            self.assertTrue(data.startswith(b"\xef\xbb\xbf"), fulltext_path)
+            text = data.decode("utf-8-sig")
+            self.assertNotIn("\ufffd", text, fulltext_path)
+            self.assertEqual(text.splitlines()[0], f"# {record.name}", fulltext_path)
+            self.assertIn(f"Law ID: {record.law_id}", text, fulltext_path)
+            self.assertIn(f"https://laws.e-gov.go.jp/law/{record.law_id}", text, fulltext_path)
+
+    def test_repository_excludes_the_four_rejected_records(self) -> None:
+        parser = parse_law_index
+        self.assertIsNotNone(parser, "law index parser is not implemented")
+        assert parser is not None
+        project = Path(__file__).parents[1]
+        records = parser(project / "INDEX.md")
+        law_ids = {record.law_id for record in records}
+        paths = {record.source_dir.as_posix() for record in records}
+
+        self.assertTrue({"431CO0000000073", "501M60000042002", "413CO0000000166"}.isdisjoint(law_ids))
+        self.assertNotIn("政令/09_電子決済手段等取引業者府令", paths)
 
 
 if __name__ == "__main__":
