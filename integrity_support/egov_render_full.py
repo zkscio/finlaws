@@ -216,7 +216,7 @@ def build_law_md(items):
 
 if __name__=='__main__':
     import sys, pathlib
-    sys.path.insert(0,'/opt/data/scripts')
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
     import egov_api
     law_id=sys.argv[1]; out=sys.argv[2]
     items,ld,sub,amend=egov_api.full_text_of_law(law_id)

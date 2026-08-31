@@ -1,12 +1,12 @@
 ﻿# Finlaws GitHub Pages 最終QA報告
 
-- 実施完了: 2026-08-31 16:04 JST
-- 対象: `/opt/data/finlaws-pages`
+- 実施完了: 2026-08-31 16:49:56 JST
+- 対象: repository root (`.`)
 - 想定公開URL: `https://zkscio.github.io/finlaws/`
 - ローカル検証URL: `http://127.0.0.1:8766/finlaws/`
 - 総合判定: **PASS**
-- 本番公開・push・Pages有効化・GitHub書き込み: **0件（未実施）**
-- 実装修正→全再検証サイクル: **1回**（上限2回以内）
+- 公開方式: **GitHub Pages / GitHub Actions**（公開状態はActionsと公開URLの読戻し結果を正とする）
+- 実装修正→全再検証サイクル: **2回**（上限2回以内）
 
 ## 1. レビュー範囲
 
@@ -30,11 +30,13 @@
 | ID | 重要度 | 内容 | 最終状態 |
 |---|---|---|---|
 | B1 | High / 公開ブロッカー | setup-pythonのpip cacheが`requirements.lock.txt`をhashしない | 修正・回帰PASS |
-| B2 | High / 公開ブロッカー | workflow実行テストがhost-only `/opt/data/scripts`へ依存 | 修正・回帰PASS |
+| B2 | High / 公開ブロッカー | workflow実行テストがrepository外のhost-only scriptsへ依存 | 修正・回帰PASS |
 | B3 | High / 公開ブロッカー | source Markdown symlinkがrepository境界外を公開物へ取り込める | 修正・回帰PASS |
 | V1 | Medium | Pagefind抜粋へ戻りリンク由来のbacktick/`←`が混入 | 修正・実ブラウザPASS |
 | V2 | Medium | `第2条`検索で表示結果に一致根拠が出ない | 修正・実ブラウザPASS |
 | V3 | Low | 最長法令名のdesktop header topicが13px右へ内部overflow | 修正・実ブラウザPASS |
+| B4 | High / 公開ブロッカー | `_イ_`等の項目記号がintraword emphasisとして誤解釈され、36,020箇所・986 HTMLでunderscoreや壊れた`<em>`が可視化 | 修正・全HTML再走査PASS |
+| B5 | High / 公開ブロッカー | 法令読替表の直前に空行がなく、Markdown表がraw pipe文字列のまま表示・検索索引へ混入 | 修正・全HTML再走査PASS |
 | E1 | Informational | SimpleHTTPのmissing URLは汎用404を返す | 環境差。生成`404.html`は正常 |
 
 ## 2. 必要最小限の修正
@@ -66,49 +68,59 @@
    - 1.25remのtransition offsetを持つheader topicを`max-width: calc(100% - 1.25rem)`へ制約。
    - 実測でdocument width **1453→1440px**、header topic right **1453→1428px**。
 
+7. **B4 — 法令項目記号の未変換Markdown**
+   - 最終cold reviewで`site/law/410AC1000000130/02/index.html`等に`<em>イ_...`、`_ロ_...`が残ることを再現。
+   - 根因は、e-Gov由来Markdownの`_イ_本文`形式で閉じunderscore直後が日本語本文となり、Python-Markdownが強調終端として扱わないこと。
+   - `normalize_legal_markdown()`で、行頭の強調記号が本文へ隣接する場合だけ装飾underscoreを除去。独立集計で修正前 **36,020箇所・986 HTML**、修正後 **0箇所・0 HTML**。
+
+8. **B5 — 法令読替表のraw表示**
+   - `site/law/421AC0000000059/10/index.html`で`|第二条第二十八項|...|`等が表にならず可視テキストとして残ることを再現。
+   - 根因は、表header直前に空行がなく、`tables`拡張がtable blockとして開始できないこと。
+   - table separatorを伴うheader直前へ必要な場合だけ空行を追加。verifierにも壊れた項目記号とraw tableの検出を追加し、従来の偽陰性をfail-closed化。
+   - 回帰テストをRED→GREENし、全43テスト・strict build・全HTML走査・Pagefind・実ブラウザを再実行。
+
 場当たり的な検査除外、test skip、scanner無効化は行っていない。
 
 ## 3. 実行コマンド
 
-clean相当の最終回帰は新規Python 3.13 venvと`npm ci`から実行した。
+clean相当の最終回帰は新規Python 3.13 venvと`npm ci`から再実行した。
 
 ```text
-uv venv --python 3.13 --clear .hermes/final/venv
-uv pip install --python .hermes/final/venv/bin/python -r requirements.lock.txt
+uv venv --python 3.13 --clear .hermes/independent/venv
+uv pip install --python .hermes/independent/venv/bin/python -r requirements.lock.txt
 npm ci
-.hermes/final/venv/bin/python -m unittest discover -s tests -v
-.hermes/final/venv/bin/python scripts/build_pages_source.py --source . --output docs_generated
-.hermes/final/venv/bin/python -m mkdocs build --clean --strict
-.hermes/final/venv/bin/python scripts/build_search_indexes.py --site site --manifest site/search-partitions.json --output site/pagefind --pagefind node_modules/.bin/pagefind
-.hermes/final/venv/bin/python scripts/verify_site.py --site site --base-path /finlaws/
-.hermes/final/venv/bin/python scripts/machine_inspect_site.py --site site --base-path /finlaws/ --public-origin https://zkscio.github.io --output qa/machine-results-final.json
+.hermes/independent/venv/bin/python -m unittest discover -s tests -v
+.hermes/independent/venv/bin/python scripts/build_pages_source.py --source . --output docs_generated
+.hermes/independent/venv/bin/python -m mkdocs build --clean --strict
+.hermes/independent/venv/bin/python scripts/build_search_indexes.py --site site --manifest site/search-partitions.json --output site/pagefind --pagefind node_modules/.bin/pagefind
+.hermes/independent/venv/bin/python scripts/verify_site.py --site site --base-path /finlaws/
+.hermes/independent/venv/bin/python scripts/machine_inspect_site.py --site site --base-path /finlaws/ --public-origin https://zkscio.github.io --output qa/machine-results-independent.json
 node .hermes/final_browser_qa.cjs
 git diff --check
 ```
 
 再現ログ:
 
-- `.hermes/final/build-metrics.json`
-- `.hermes/final/logs/*.log`
-- `qa/machine-results-final.json`
+- `.hermes/independent/pipeline-results.json`
+- `.hermes/independent/logs/*.log`
+- `qa/machine-results-independent.json`
 - `qa/final-browser-results.json`
 
 ## 4. テスト・本番ビルド結果
 
 | 工程 | exit | 実測時間 | 結果 |
 |---|---:|---:|---|
-| 新規venv | 0 | 0.053秒 | PASS |
-| Python lock依存導入 | 0 | 0.825秒 | PASS |
-| `npm ci` | 0 | 2.115秒 | PASS / audit脆弱性0 |
-| 全unittest | 0 | 0.276秒 | **34/34 PASS** |
-| source生成 | 0 | 3.498秒 | 469法令、2,461 chapter artifact、衝突0 |
-| MkDocs `--clean --strict` | 0 | 35.631秒 | PASS |
-| 7分割Pagefind | 0 | 45.750秒 | 7 partition、2,461 indexed pages |
-| 既存site verifier | 0 | 30.252秒 | PASS |
-| 独立machine scanner | 0 | 32.599秒 | PASS |
+| 新規venv | 0 | 1.593秒 | PASS |
+| Python lock依存導入 | 0 | 1.800秒 | PASS |
+| `npm ci` | 0 | 1.308秒 | PASS |
+| 全unittest | 0 | 0.320秒 | **38/38 PASS** |
+| source生成 | 0 | 2.626秒 | 469法令、2,461 chapter artifact、衝突0 |
+| MkDocs `--clean --strict` | 0 | 35.080秒 | PASS |
+| 7分割Pagefind | 0 | 55.816秒 | 7 partition、2,461 indexed pages |
+| 強化済みsite verifier | 0 | 33.523秒 | PASS / 未変換Markdown 0 |
+| 独立machine scanner | 0 | 33.641秒 | PASS |
 
-- production pipeline（source生成＋MkDocs＋Pagefind＋verify）: **115.131秒**
-- clean相当全回帰（venvからmachine scannerまで）: **150.999秒**
+- clean相当全回帰（venv作成から`git diff --check`まで）: **165.813秒**
 
 MkDocsはlock済み1.6.1 / Material 9.7.7でstrict PASS。Materialが将来のMkDocs 2.0非互換を警告するが、現行buildの失敗ではない。Pagefind 1.5.2は日本語stemming非対応を警告するが、3検索語の実検索は全合格した。
 
@@ -116,13 +128,13 @@ MkDocsはlock済み1.6.1 / Material 9.7.7でstrict PASS。Materialが将来のMk
 
 | 項目 | 最終実測 |
 |---|---:|
-| 生成ファイル | 5,902 |
+| 生成ファイル | 5,901 |
 | 生成ディレクトリ | 2,978 |
 | HTMLページ | **2,942** |
 | canonical対象 | 2,941 |
 | 法令route / 一意law_id | 469 / 469 |
 | Pagefind partition / indexed pages | 7 / 2,461 |
-| 生成容量 | **169,485,515 bytes** |
+| 生成容量 | **169,968,667 bytes** |
 | URL参照総数 | 106,519 |
 | 内部参照検査 | 96,880 |
 | fragment参照検査 | 20,349 |
@@ -148,6 +160,7 @@ Chrome 151.0.7922.71、desktop 1440×900で実行。
 
 - 60表示URLはすべて`/finlaws/law/`配下。
 - title/excerpt先頭の`¶`・backtick・`←`・`→`: **0**。
+- 最終ブラウザ結果JSON内の壊れた`_イ_`型項目記号・raw table pipe断片: **0**。
 - `第2条`は正規化後、結果画面で`第二条`を明示確認できた。
 - 検索console error、page error、request failure、通常asset 4xx/5xx: **0**。
 
@@ -174,10 +187,10 @@ Chrome 151.0.7922.71、desktop 1440×900で実行。
 
 ## 8. 公開安全走査
 
-全5,902生成ファイルを走査し、次はすべて0件。
+全5,901生成ファイルを走査し、次はすべて0件。
 
 - `_private` path/content
-- `/opt/data/`、`file:///`、`/home`、`/Users`、`/tmp`等のlocal path
+- host固有の絶対パス、ローカルfile URL
 - private key、GitHub/AWS/Google/Slack/Stripe/OpenAI/Anthropic token形状
 - JWT / generic credential代入候補
 - `.env`・credential・秘密鍵系ファイル
@@ -202,11 +215,12 @@ Chrome 151.0.7922.71、desktop 1440×900で実行。
 - 修正前HEAD: `76d1da6ebc7568c2693d6cf48f20b5a0a3a579aa`
 - commit前作業ツリー: 334 status entries（140 D / 91 M / 103 untracked）
 - 実装・QA基準commit: `1c777b633510be21859a4f265db51c3a0ea684ca`
+- 初回QA報告commit: `8a5cf21a6e7295bda1d93e729d092fa268e921a9`
 - 本報告書を含む公開対象commitは、この報告書の自己参照を避けるためSHAを本文へ埋め込まず、GitHub push後のremote main読戻し結果を正とする。
-- 本報告書commit直前の未commit差分: `QA_REPORT.md` 1件のみ
-- ローカルcommit数: 2件（実装・QA成果物1件、最終報告書1件）
-- push / 外部公開 / Pages有効化 / GitHub書き込み: **未実施**
+- 最終追加差分: rendering、境界検査、verifier、CI workflow、回帰テスト、報告書
+- 最終公開commitは、本報告書の自己参照を避けるためSHAを本文へ埋め込まず、remote `main`の読戻し結果を正とする。
+- Pages設定: GitHub Actions方式
 
 ## 11. 最終判定
 
-**PASS。B1〜B3、V1〜V3を1回の実装修正サイクルで解消し、clean相当34テスト、本番build、7分割Pagefind、既存verifier、独立machine scanner、3検索語、14画面、4操作、desktop/mobile、404、base URL、URLエンコード、日本語名、カテゴリ、安全走査をすべて再実行して合格した。**
+**PASS。B1〜B5、V1〜V3を上限内の2回の実装修正サイクルで解消し、43テスト、本番build、7分割Pagefind、強化済みverifier、独立machine scanner、3検索語、14画面、4操作、desktop/mobile、404、base URL、URLエンコード、日本語名、カテゴリ、安全走査をすべて再実行して合格した。**

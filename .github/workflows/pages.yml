@@ -67,7 +67,10 @@ jobs:
         run: python scripts/build_search_indexes.py --site site --manifest site/search-partitions.json --output site/pagefind --pagefind node_modules/.bin/pagefind
 
       - name: Verify generated site
-        run: python scripts/verify_site.py --site site --base-path /finlaws/
+        run: python scripts/verify_site.py --site site --base-path /finlaws/ --expected-law-routes 469 --expected-partitions 7
+
+      - name: Independently audit generated artifact
+        run: python scripts/machine_inspect_site.py --site site --base-path /finlaws/ --public-origin https://zkscio.github.io --output qa/machine-results-ci.json
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3

@@ -88,6 +88,12 @@ def parse_law_index(index_path: Path) -> list[LawRecord]:
             raise ValueError(f"invalid law_id in INDEX: {law_id!r}")
         if source_path.is_absolute() or any(part in {"", ".", ".."} for part in source_path.parts):
             raise ValueError(f"unsafe source path in INDEX: {source!r}")
+        if (
+            len(source_path.parts) < 2
+            or source_path.parts[0] != category
+            or any(part == "_private" or part.startswith(".") for part in source_path.parts)
+        ):
+            raise ValueError(f"source path does not match public category in INDEX: {source!r}")
         records.append(
             LawRecord(
                 number=number,
@@ -153,6 +159,30 @@ def rewrite_egov_law_links(markdown: str) -> str:
     )
 
 
+_INTRAWORD_LEGAL_EMPHASIS = re.compile(r"(?m)^_([^_\n]{1,40})_(?=\S)")
+_TABLE_SEPARATOR = re.compile(r"^\|\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?$")
+
+
+def normalize_legal_markdown(markdown: str) -> str:
+    """Make e-Gov-derived legal Markdown render as visible legal text."""
+    markdown = _INTRAWORD_LEGAL_EMPHASIS.sub(r"\1", markdown)
+    had_trailing_newline = markdown.endswith("\n")
+    lines = markdown.splitlines()
+    normalized: list[str] = []
+    for index, line in enumerate(lines):
+        next_line = lines[index + 1].strip() if index + 1 < len(lines) else ""
+        if (
+            line.strip().startswith("|")
+            and _TABLE_SEPARATOR.fullmatch(next_line)
+            and normalized
+            and normalized[-1].strip()
+        ):
+            normalized.append("")
+        normalized.append(line)
+    result = "\n".join(normalized)
+    return result + "\n" if had_trailing_newline else result
+
+
 def search_page_markdown() -> str:
     return """---
 title: "法令検索"
@@ -215,8 +245,12 @@ def build_site_source(source_root: Path, output_root: Path) -> dict[str, int]:
     used_url_ids: set[str] = set()
     url_collisions = 0
     for record in parsed_records:
-        source_dir = (source_root / record.source_dir).resolve()
-        if not source_dir.is_relative_to(source_root):
+        raw_source_dir = source_root / record.source_dir
+        if raw_source_dir.is_symlink():
+            raise ValueError(f"law source directory symlink is not allowed: {record.source_dir}")
+        source_dir = raw_source_dir.resolve()
+        category_root = (source_root / record.category).resolve()
+        if not source_dir.is_relative_to(source_root) or not source_dir.is_relative_to(category_root):
             raise ValueError(f"law source escapes repository root: {record.source_dir}")
         if not source_dir.is_dir():
             raise FileNotFoundError(f"missing law directory: {record.source_dir}")
@@ -369,6 +403,7 @@ def build_site_source(source_root: Path, output_root: Path) -> dict[str, int]:
 
         for slug, title, source_path in chapters:
             source_text = source_path.read_text(encoding="utf-8-sig").lstrip("\ufeff")
+            source_text = normalize_legal_markdown(source_text)
             source_text = rewrite_internal_links(source_text, target_map)
             source_text = rewrite_egov_law_links(source_text)
             if slug == "fulltext":

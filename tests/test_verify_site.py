@@ -75,13 +75,40 @@ class RenderedContentTests(unittest.TestCase):
 
             self.assertEqual(findings, ["index.html"])
 
+    def test_reports_malformed_legal_subitem_emphasis_left_in_html(self) -> None:
+        verifier = find_unrendered_markdown
+        self.assertIsNotNone(verifier, "rendered-content verifier is not implemented")
+        assert verifier is not None
+        with tempfile.TemporaryDirectory() as tmp:
+            site = Path(tmp)
+            site.joinpath("index.html").write_text(
+                "<main><p><em>イ_電子決済等代行業</p></main>",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(verifier(site), ["index.html"])
+
+    def test_reports_raw_legal_markdown_table_left_in_html(self) -> None:
+        verifier = find_unrendered_markdown
+        self.assertIsNotNone(verifier, "rendered-content verifier is not implemented")
+        assert verifier is not None
+        with tempfile.TemporaryDirectory() as tmp:
+            site = Path(tmp)
+            site.joinpath("index.html").write_text(
+                "<main><p>| 条項 | 読替前 | 読替後 |\n| --- | --- | --- |\n| 第二条 | 銀行業務 | 資金移動業 |</p></main>",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(verifier(site), ["index.html"])
+
 
 class PublicationSafetyTests(unittest.TestCase):
     def test_reports_private_paths_local_paths_and_secret_shapes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             site = Path(tmp)
             site.joinpath("index.html").write_text(
-                "<p>safe</p><p>_private/secret.md</p><p>/opt/data/laws</p>",
+                "<p>safe</p><p>_private/secret.md</p><p>/opt/data/laws</p>"
+                "<p>/home/runner/work/private-law.md</p><p>file:///Users/alice/private-law.md</p>",
                 encoding="utf-8",
             )
             site.joinpath("app.js").write_text("const token = 'github_pat_example';", encoding="utf-8")
@@ -90,7 +117,7 @@ class PublicationSafetyTests(unittest.TestCase):
             findings = scan_forbidden_content(site)
 
             markers = {marker for _, marker in findings}
-            self.assertEqual(markers, {"_private/", "/opt/data/", "github_pat_"})
+            self.assertEqual(markers, {"_private/", "/opt/data/", "/home/", "file:///", "github_pat_"})
 
 
 class BuiltSiteGateTests(unittest.TestCase):
@@ -117,6 +144,35 @@ class BuiltSiteGateTests(unittest.TestCase):
             self.assertEqual(passing["html_files"], 2)
             self.assertEqual(passing["broken_links"], [])
             self.assertEqual(passing["forbidden_content"], [])
+
+    def test_enforces_expected_law_route_and_partition_counts(self) -> None:
+        gate = verify_built_site
+        self.assertIsNotNone(gate, "built-site verification gate is not implemented")
+        assert gate is not None
+        with tempfile.TemporaryDirectory() as tmp:
+            site = Path(tmp)
+            site.joinpath("index.html").write_text("<h1>Finlaws</h1>", encoding="utf-8")
+            site.joinpath("404.html").write_text("<h1>404</h1>", encoding="utf-8")
+            site.joinpath("law/999AA0000000000").mkdir(parents=True)
+            site.joinpath("law/999AA0000000000/index.html").write_text("<h1>一法</h1>", encoding="utf-8")
+            pagefind = site / "pagefind"
+            pagefind.joinpath("act").mkdir(parents=True)
+            pagefind.joinpath("act/pagefind.js").write_text("safe", encoding="utf-8")
+            pagefind.joinpath("manifest.json").write_text(
+                '{"base_path":"/finlaws/","partitions":[{"name":"act","bundle":"act/","pages":1}]}',
+                encoding="utf-8",
+            )
+
+            report = gate(
+                site,
+                "/finlaws/",
+                expected_law_routes=469,
+                expected_partitions=7,
+            )
+
+            self.assertEqual(report["status"], "fail")
+            self.assertIn("law route count mismatch", report["errors"])
+            self.assertIn("Pagefind partition count mismatch", report["errors"])
 
 
 if __name__ == "__main__":
