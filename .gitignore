@@ -1,0 +1,11 @@
+.venv/
+node_modules/
+docs_generated/
+site/
+qa/
+.hermes/
+.serve-root/
+pagefind-build.log
+__pycache__/
+*.pyc
+.build-metrics.json

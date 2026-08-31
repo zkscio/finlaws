@@ -1,0 +1,15 @@
+{
+  "name": "finlaws-pages",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local Pagefind build tooling for the Finlaws static site",
+  "scripts": {
+    "pagefind": "pagefind --site site --force-language ja"
+  },
+  "devDependencies": {
+    "pagefind": "1.5.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
