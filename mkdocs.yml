@@ -1,0 +1,72 @@
+site_name: Finlaws
+site_description: 日本の金融関連法令を高速に検索・閲覧できる静的ライブラリ
+site_author: Finlaws
+site_url: https://zkscio.github.io/finlaws/
+docs_dir: docs_generated
+site_dir: site
+use_directory_urls: true
+strict: true
+
+theme:
+  name: material
+  language: ja
+  custom_dir: overrides
+  palette:
+    scheme: default
+    primary: white
+    accent: green
+  font: false
+  features:
+    - navigation.path
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - content.code.copy
+  icon:
+    logo: material/scale-balance
+    repo: fontawesome/brands/github
+
+plugins: []
+
+nav:
+  - ホーム: index.md
+  - 法令検索: search/index.md
+  - 全法令: laws/index.md
+  - カテゴリ:
+      - 法律: category/act/index.md
+      - 政令: category/cabinet-order/index.md
+      - 内閣府令: category/cabinet-office-ordinance/index.md
+      - 府省令: category/joint-ministerial-ordinance/index.md
+      - 命令: category/order/index.md
+      - 規則: category/rule/index.md
+      - 省令: category/ministerial-ordinance/index.md
+  - 免責・出典: disclaimer.md
+  - GitHub: https://github.com/zkscio/finlaws
+
+not_in_nav: |
+  /law/**
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 2-4
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+extra_css:
+  - assets/finlaws.css
+  - assets/finlaws-search.css
+
+extra_javascript:
+  - assets/finlaws-search.js
+
+copyright: 条文の正本はe-Gov法令検索で確認してください。法的助言ではありません。

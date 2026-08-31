@@ -1,0 +1,13 @@
+{% extends "main.html" %}
+
+{% block content %}
+  <section class="finlaws-404" aria-labelledby="not-found-title">
+    <p class="finlaws-404__code">ERROR 404</p>
+    <h1 id="not-found-title">ページが見つかりません</h1>
+    <p>URLが変更されたか、法令IDまたは章の指定が正しくない可能性があります。</p>
+    <p>
+      <a class="md-button md-button--primary" href="{{ 'search/' | url }}">法令を検索</a>
+      <a class="md-button" href="{{ '' | url }}">ホームへ戻る</a>
+    </p>
+  </section>
+{% endblock %}
